@@ -144,6 +144,7 @@ send_request() {
     echo "Dry run: ${curl_cmd[@]}"
     echo "200 0.0" # Simulated response for dry-run
   else
+    # shellcheck disable=SC2294
     eval "${curl_cmd[@]}"
   fi
 }
@@ -201,6 +202,14 @@ success_count=0
 fail_count=0
 total_time=0
 
+# Capture start time
+start_time=$(date +"%Y-%m-%d %H:%M:%S")
+start_epoch=$(date +%s) # Epoch time for accurate calculations
+echo "Simulation started at: $start_time"
+
+# Log start time
+echo "Simulation started at: $start_time" >> "$log_file"
+
 # Convert duration to seconds
 duration_in_seconds=$(convert_duration_to_seconds "$duration")
 
@@ -227,5 +236,28 @@ for ((i=1; i<=num_requests; i++)); do
   sleep "$sleep_time"
 done
 
+# Capture completion time
+completion_epoch=$(date +%s) # Epoch time for accurate calculations
+completion_time=$(date +"%Y-%m-%d %H:%M:%S")
+actual_time_taken=$((completion_epoch - start_epoch)) # Actual script runtime in seconds
+
+echo "Simulation completed at: $completion_time"
+
+# Log completion time
+echo "Simulation completed at: $completion_time" >> "$log_file"
+
 # Print summary
 print_summary
+
+# Log summary with actual script runtime
+{
+  echo -e "\nSummary:"
+  echo "--------------------"
+  echo "Total Requests: $num_requests"
+  echo "Successful Requests: $success_count"
+  echo "Failed Requests: $fail_count"
+  echo "Total Time Taken (requests only): ${total_time}s"
+  echo "Actual Script Runtime: ${actual_time_taken}s"
+  echo "Average Time Per Request: $(awk "BEGIN {print $total_time / $num_requests}")s"
+  echo "--------------------"
+} >> "$log_file"
