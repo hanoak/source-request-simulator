@@ -3,6 +3,7 @@
 # Author: Deelesi Suanu
 # Description: Source Request Simulator is an alternative tool to jmeter and k6 cli for stress testing api requests
 # Usage: Please refer to README on this repository.
+# File Name: simulator.sh
 
 # Default configurations
 url="https://example.com/api" # Default API endpoint
@@ -111,6 +112,7 @@ if [[ -n "$config_file" ]]; then
     url=$(echo "$config" | jq -r '.url // empty')
     method=$(echo "$config" | jq -r '.method // "GET"')
     payload=$(echo "$config" | jq -r '.payload // ""')
+    # shellcheck disable=SC2207
     headers=($(echo "$config" | jq -r '.headers[] // empty'))
     num_requests=$(echo "$config" | jq -r '.num_requests // 10')
     log_file=$(echo "$config" | jq -r '.log_file // "requests_log.txt"')
@@ -159,11 +161,31 @@ log_request() {
   fi
 }
 
+# Function to convert duration to seconds
+convert_duration_to_seconds() {
+  local duration="$1"
+  local value="${duration//[!0-9]/}" # Extract numeric value
+  local unit="${duration//[0-9]/}"  # Extract unit (s, m, h)
+
+  case "$unit" in
+    s) echo "$value" ;;                  # Seconds (no conversion)
+    m) echo $((value * 60)) ;;           # Minutes to seconds
+    h) echo $((value * 3600)) ;;         # Hours to seconds
+    *) echo "$value" ;;                  # Default: assume seconds
+  esac
+}
+
+# Convert duration to seconds
+duration_in_seconds=$(convert_duration_to_seconds "$duration")
+
 # Send requests
 for ((i=1; i<=num_requests; i++)); do
   result=$(send_request "$url" "$method" "${headers[@]}" "$payload")
   status=$(echo "$result" | awk '{print $1}')
   time=$(echo "$result" | awk '{print $2}')
   log_request "$i" "$status" "$time"
-  sleep $((duration / num_requests))
+
+  # Calculate delay between requests
+  sleep_time=$((duration_in_seconds / num_requests))
+  sleep "$sleep_time"
 done
