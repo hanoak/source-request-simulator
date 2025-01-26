@@ -142,8 +142,8 @@ send_request() {
   if [[ "$dry_run" == true ]]; then
     # shellcheck disable=SC2145
     echo "Dry run: ${curl_cmd[@]}"
+    echo "200 0.0" # Simulated response for dry-run
   else
-    # shellcheck disable=SC2294
     eval "${curl_cmd[@]}"
   fi
 }
@@ -157,8 +157,29 @@ log_request() {
   if [[ "$log_format" == "json" ]]; then
     echo "{\"request_id\":$request_id,\"status\":$status,\"time\":$time}" >> "$log_file"
   else
-    echo "Request #$request_id: Status $status, Time ${time}ms" >> "$log_file"
+    echo "Request #$request_id: Status $status, Time ${time}s" >> "$log_file"
   fi
+}
+
+# Function to print stats
+print_stats() {
+  local request_id="$1"
+  local status="$2"
+  local time="$3"
+
+  echo "Request #$request_id -> Status: $status, Time: ${time}s"
+}
+
+# Summary function
+print_summary() {
+  echo -e "\nSummary:"
+  echo "--------------------"
+  echo "Total Requests: $num_requests"
+  echo "Successful Requests: $success_count"
+  echo "Failed Requests: $fail_count"
+  echo "Total Time Taken: ${total_time}s"
+  echo "Average Time Per Request: $(awk "BEGIN {print $total_time / $num_requests}")s"
+  echo "--------------------"
 }
 
 # Function to convert duration to seconds
@@ -175,6 +196,11 @@ convert_duration_to_seconds() {
   esac
 }
 
+# Initialize counters
+success_count=0
+fail_count=0
+total_time=0
+
 # Convert duration to seconds
 duration_in_seconds=$(convert_duration_to_seconds "$duration")
 
@@ -183,9 +209,23 @@ for ((i=1; i<=num_requests; i++)); do
   result=$(send_request "$url" "$method" "${headers[@]}" "$payload")
   status=$(echo "$result" | awk '{print $1}')
   time=$(echo "$result" | awk '{print $2}')
-  log_request "$i" "$status" "$time"
 
-  # Calculate delay between requests
+  # Update counters
+  if [[ "$status" == "200" ]]; then
+    ((success_count++))
+  else
+    ((fail_count++))
+  fi
+  total_time=$(awk "BEGIN {print $total_time + $time}")
+
+  # Log and print stats
+  log_request "$i" "$status" "$time"
+  print_stats "$i" "$status" "$time"
+
+  # Delay between requests
   sleep_time=$((duration_in_seconds / num_requests))
   sleep "$sleep_time"
 done
+
+# Print summary
+print_summary
