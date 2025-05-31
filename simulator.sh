@@ -20,6 +20,11 @@ retry_delay=2 # Default retry delay in seconds
 dry_run=false # Default dry run mode
 log_format="text" # Default log format (text/json)
 
+# Script counters
+success_count=0
+fail_count=0
+total_time=0
+
 # Parse command-line arguments
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
@@ -124,11 +129,6 @@ fi
 
 # Function to send a single request
 send_request() {
-  local url="$1"
-  local method="$2"
-  local headers=("${@:3}")
-  local payload="$4"
-
   # Build curl command
   curl_cmd=("curl -s -o /dev/null -w \"%{http_code} %{time_total}\" -X $method")
   for header in "${headers[@]}"; do
@@ -145,42 +145,29 @@ send_request() {
     echo "200 0.0" # Simulated response for dry-run
   else
     # shellcheck disable=SC2294
-    eval "${curl_cmd[@]}"
+    result=$(eval "${curl_cmd[@]}")
+    status=$(echo "$result" | awk '{print $1}')
+    time=$(echo "$result" | awk '{print $2}')
+
+    # Update counters
+    if [[ "$status" == "200" ]]; then
+      ((success_count++))
+    else
+      ((fail_count++))
+    fi
+    total_time=$(awk "BEGIN {print $total_time + $time}")
+
+    # Log and print stats
+    console="Request #$1: Status $status, Time ${time}s"
+
+    if [[ "$log_format" == "json" ]]; then
+    echo "{\"request_id\":$1,\"status\":$status,\"time\":$time}" >> "$log_file"
+    else
+      echo $console >> "$log_file"
+    fi
+
+    echo "$console"
   fi
-}
-
-# Function to log request results
-log_request() {
-  local request_id="$1"
-  local status="$2"
-  local time="$3"
-
-  if [[ "$log_format" == "json" ]]; then
-    echo "{\"request_id\":$request_id,\"status\":$status,\"time\":$time}" >> "$log_file"
-  else
-    echo "Request #$request_id: Status $status, Time ${time}s" >> "$log_file"
-  fi
-}
-
-# Function to print stats
-print_stats() {
-  local request_id="$1"
-  local status="$2"
-  local time="$3"
-
-  echo "Request #$request_id -> Status: $status, Time: ${time}s"
-}
-
-# Summary function
-print_summary() {
-  echo -e "\nSummary:"
-  echo "--------------------"
-  echo "Total Requests: $num_requests"
-  echo "Successful Requests: $success_count"
-  echo "Failed Requests: $fail_count"
-  echo "Total Time Taken: ${total_time}s"
-  echo "Average Time Per Request: $(awk "BEGIN {print $total_time / $num_requests}")s"
-  echo "--------------------"
 }
 
 # Function to convert duration to seconds
@@ -197,43 +184,21 @@ convert_duration_to_seconds() {
   esac
 }
 
-# Initialize counters
-success_count=0
-fail_count=0
-total_time=0
-
 # Capture start time
 start_time=$(date +"%Y-%m-%d %H:%M:%S")
 start_epoch=$(date +%s) # Epoch time for accurate calculations
-echo "Simulation started at: $start_time"
+start="Simulation started at: $start_time"
 
 # Log start time
-echo "Simulation started at: $start_time" >> "$log_file"
+echo "$start"
+echo "$start" >> "$log_file"
 
 # Convert duration to seconds
 duration_in_seconds=$(convert_duration_to_seconds "$duration")
 
 # Send requests
 for ((i=1; i<=num_requests; i++)); do
-  result=$(send_request "$url" "$method" "${headers[@]}" "$payload")
-  status=$(echo "$result" | awk '{print $1}')
-  time=$(echo "$result" | awk '{print $2}')
-
-  # Update counters
-  if [[ "$status" == "200" ]]; then
-    ((success_count++))
-  else
-    ((fail_count++))
-  fi
-  total_time=$(awk "BEGIN {print $total_time + $time}")
-
-  # Log and print stats
-  log_request "$i" "$status" "$time"
-  print_stats "$i" "$status" "$time"
-
-  # Delay between requests
-  sleep_time=$((duration_in_seconds / num_requests))
-  sleep "$sleep_time"
+  send_request "$i"
 done
 
 # Capture completion time
@@ -241,16 +206,9 @@ completion_epoch=$(date +%s) # Epoch time for accurate calculations
 completion_time=$(date +"%Y-%m-%d %H:%M:%S")
 actual_time_taken=$((completion_epoch - start_epoch)) # Actual script runtime in seconds
 
-echo "Simulation completed at: $completion_time"
-
-# Log completion time
-echo "Simulation completed at: $completion_time" >> "$log_file"
-
-# Print summary
-print_summary
-
-# Log summary with actual script runtime
-{
+# Print & log summary
+summary=`
+  echo "Simulation completed at: $completion_time"
   echo -e "\nSummary:"
   echo "--------------------"
   echo "Total Requests: $num_requests"
@@ -260,4 +218,6 @@ print_summary
   echo "Actual Script Runtime: ${actual_time_taken}s"
   echo "Average Time Per Request: $(awk "BEGIN {print $total_time / $num_requests}")s"
   echo "--------------------"
-} >> "$log_file"
+`
+echo -e "$summary"
+echo -e "$summary" >> "$log_file"
