@@ -13,7 +13,7 @@ payload="" # Default payload for POST requests
 log_file="requests_log.txt" # Default log file
 num_requests=10 # Default number of requests
 duration="10s" # Default duration
-concurrent_requests=5 # Default concurrency level
+concurrent_requests=1 # Default concurrency level
 config_file="" # Default config file (none)
 retry_count=3 # Default retry count
 retry_delay=2 # Default retry delay in seconds
@@ -121,6 +121,7 @@ if [[ -n "$config_file" ]]; then
     headers=($(echo "$config" | jq -r '.headers[] // empty'))
     num_requests=$(echo "$config" | jq -r '.num_requests // 10')
     log_file=$(echo "$config" | jq -r '.log_file // "requests_log.txt"')
+    concurrent_requests=$(echo "$config" | jq -r '.concurrent_requests // 1')
   else
     echo "Configuration file not found: $config_file"
     exit 1
@@ -198,8 +199,27 @@ duration_in_seconds=$(convert_duration_to_seconds "$duration")
 
 # Send requests
 for ((i=1; i<=num_requests; i++)); do
-  send_request "$i"
+
+  if (( concurrent_requests <= 1 )); then
+    # If concurrency is 1, send requests sequentially
+    send_request "$i"
+    
+    # Delay between requests
+    sleep_time=$((duration_in_seconds / num_requests))
+    sleep "$sleep_time"
+  else
+    # If concurrency is greater than 1, run requests in background
+    send_request "$i" &
+    if (( i % concurrent_requests == 0 )); then
+      wait # Wait for current batch of requests to finish
+    fi
+  fi
+
 done
+
+# Wait for remaining requests to finish
+wait
+
 
 # Capture completion time
 completion_epoch=$(date +%s) # Epoch time for accurate calculations
