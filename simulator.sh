@@ -20,11 +20,6 @@ retry_delay=2 # Default retry delay in seconds
 dry_run=false # Default dry run mode
 log_format="text" # Default log format (text/json)
 
-# Script counters
-success_count=0
-fail_count=0
-total_time=0
-
 # Parse command-line arguments
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
@@ -150,19 +145,11 @@ send_request() {
     status=$(echo "$result" | awk '{print $1}')
     time=$(echo "$result" | awk '{print $2}')
 
-    # Update counters
-    if [[ "$status" == "200" ]]; then
-      ((success_count++))
-    else
-      ((fail_count++))
-    fi
-    total_time=$(awk "BEGIN {print $total_time + $time}")
-
     # Log and print stats
-    console="Request #$1: Status $status, Time ${time}s"
+    console="Request #$1 --> Status: $status, Response Time: ${time}s"
 
     if [[ "$log_format" == "json" ]]; then
-    echo "{\"request_id\":$1,\"status\":$status,\"time\":$time}" >> "$log_file"
+    echo "{\"request_id\":$1,\"status\":$status,\"response_time\":$time}" >> "$log_file"
     else
       echo $console >> "$log_file"
     fi
@@ -232,11 +219,8 @@ summary=`
   echo -e "\nSummary:"
   echo "--------------------"
   echo "Total Requests: $num_requests"
-  echo "Successful Requests: $success_count"
-  echo "Failed Requests: $fail_count"
-  echo "Total Time Taken (requests only): ${total_time}s"
   echo "Actual Script Runtime: ${actual_time_taken}s"
-  echo "Average Time Per Request: $(awk "BEGIN {print $total_time / $num_requests}")s"
+  echo "Average Time Taken: $(awk "BEGIN {print $actual_time_taken / $num_requests}")s"
   echo "--------------------"
 `
 echo -e "$summary"
